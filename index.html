@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reward Cashback Generator — Word Docx Exporter</title>
+    <meta name="description" content="Aplikasi pemroses & generator file .docx untuk data reward cashback mitra penjualan ICONNET.">
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <!-- docx library (UMD Browser Build) -->
+    <script src="https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.js"></script>
+</head>
+<body>
+    <div class="app-container">
+        <!-- App Header -->
+        <header class="app-header">
+            <div class="logo-area">
+                <div class="logo-icon">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>
+                </div>
+                <div>
+                    <h1>Reward Cashback Generator</h1>
+                    <p class="subtitle">Otomasi Parsing Excel Data &amp; Export Dokumentasi Word (.docx)</p>
+                </div>
+            </div>
+            <div class="badge-status">
+                <span class="status-dot"></span> Static Client-Side
+            </div>
+        </header>
+
+        <!-- Main Workspace -->
+        <main class="main-content">
+            <!-- Form Input Panel -->
+            <section class="card form-card">
+                <div class="card-header">
+                    <h2><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg> Form Configuration &amp; Data Input</h2>
+                    <button type="button" id="btnReset" class="btn btn-text btn-sm" title="Kosongkan form input">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg> Reset Input
+                    </button>
+                </div>
+
+                <div class="form-grid">
+                    <div class="form-group full-width">
+                        <label for="periodTitle">Judul / Header Periode Transfer <span class="required">*</span></label>
+                        <input type="text" id="periodTitle" class="form-control" placeholder="Contoh: REWARD CASHBACK VOUCHER CW WEEKEND PERIODE TRANSFER 16 JULI 2026" autocomplete="off">
+                        <small class="help-text">Judul ini akan ditampilkan di baris atas tabel docx sebagai teks editable (bisa diedit di MS Word).</small>
+                    </div>
+
+                    <div class="form-group third-width">
+                        <label for="tanggalProses">Tanggal Proses <span class="optional">(Opsional)</span></label>
+                        <input type="text" id="tanggalProses" class="form-control" placeholder="Contoh: 16 JULI 2026" autocomplete="off">
+                        <small class="help-text">Mengisi kolom "TANGGAL PROSES" di sebelah paling kiri tabel.</small>
+                    </div>
+
+                    <div class="form-group third-width">
+                        <label for="idColumnLabel">Label Kolom ID <span class="required">*</span></label>
+                        <input type="text" id="idColumnLabel" class="form-control" value="ID USER" placeholder="Contoh: ID USER / ID PLN / ID PERMOHONAN" autocomplete="off">
+                        <small class="help-text">Nama header untuk kolom ID.</small>
+                    </div>
+
+                    <div class="form-group third-width">
+                        <label for="agentsPerPage">Orientasi &amp; Format Kertas <span class="required">*</span></label>
+                        <select id="agentsPerPage" class="form-control">
+                            <option value="0" selected>Landscape — Continuous (Otomatis &amp; Tanpa Ruang Kosong)</option>
+                            <option value="2">Landscape — 2 Agen Per Halaman (Dengan Page Break)</option>
+                            <option value="3">Landscape — 3 Agen Per Halaman</option>
+                            <option value="1">Landscape — 1 Agen Per Halaman</option>
+                        </select>
+                        <small class="help-text">Format otomatis menyesuaikan tinggi kertas tanpa menyisakan area kosong.</small>
+                    </div>
+
+                    <div class="form-group third-width">
+                        <label for="promoColumnLabel">Label Promo / Voucher</label>
+                        <input type="text" id="promoColumnLabel" class="form-control" value="VOUCHER" placeholder="Contoh: VOUCHER atau PROMO">
+                    </div>
+
+                    <div class="form-group third-width">
+                        <label for="walletColumnLabel">Label Wallet / Rekening</label>
+                        <input type="text" id="walletColumnLabel" class="form-control" value="E-WALLET / ID PLN" placeholder="Contoh: E-WALLET / ID PLN atau NO E WALLET">
+                    </div>
+
+                    <div class="form-group third-width">
+                        <label for="nominalColumnLabel">Label Nominal</label>
+                        <input type="text" id="nominalColumnLabel" class="form-control" value="NOMINAL" placeholder="Contoh: NOMINAL atau NOMINAL TF">
+                    </div>
+
+                    <div class="form-group full-width">
+                        <div class="label-with-action">
+                            <label for="rawInput">Data Mentah TSV (Paste dari Excel) <span class="required">*</span></label>
+                            <div class="sample-actions">
+                                <button type="button" id="btnSample1" class="btn btn-xs btn-outline">Muat Contoh 1</button>
+                                <button type="button" id="btnSample2" class="btn btn-xs btn-outline">Muat Contoh 2</button>
+                            </div>
+                        </div>
+                        <textarea id="rawInput" class="form-control code-font" rows="8" placeholder="Paste data mentah tab-separated hasil copy dari Excel di sini..."></textarea>
+                        <small class="help-text">Baris header/judul lama dari Excel akan diabaikan otomatis oleh parser.</small>
+                    </div>
+                </div>
+
+                <!-- Dynamic Per-Agent Photo Upload Container -->
+                <div id="agentPhotosSection" class="agent-photos-card hidden">
+                    <div class="agent-photos-header">
+                        <h3><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg> Upload / Drag &amp; Drop Foto Bukti Transfer (1 Foto Per Agen)</h3>
+                        <span class="help-text">Klik tombol atau langsung Drag &amp; Drop (tarik) foto bukti transfer ke kotak agen masing-masing</span>
+                    </div>
+                    <div id="agentPhotoGrid" class="agent-photo-grid">
+                        <!-- Dynamically populated list of agent photo uploaders -->
+                    </div>
+                </div>
+
+                <div class="form-actions">
+                    <button type="button" id="btnProcess" class="btn btn-primary">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg> Proses Data
+                    </button>
+                    <button type="button" id="btnPreview" class="btn btn-secondary" disabled>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg> Preview Popup
+                    </button>
+                    <button type="button" id="btnDownload" class="btn btn-success" disabled>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Download .docx
+                    </button>
+                </div>
+            </section>
+
+            <!-- Alerts & Warnings Box -->
+            <div id="alertBox" class="alert-container hidden"></div>
+
+            <!-- Parsed Data Live Preview Section -->
+            <section id="previewSection" class="card result-card hidden">
+                <div class="card-header">
+                    <h2><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg> Hasil Parsing Data Tabel</h2>
+                    <div id="parseSummaryBadge" class="summary-badge"></div>
+                </div>
+
+                <div class="table-responsive" id="tableContainer">
+                    <!-- Dynamic HTML table will be rendered here -->
+                </div>
+            </section>
+        </main>
+
+        <!-- Preview Modal Dialog -->
+        <dialog id="previewModal" class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <div class="modal-title-wrap">
+                        <h3><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14 2z"/><polyline points="14 2 14 8 20 8"/></svg> Preview Dokumen Word (.docx)</h3>
+                        <p>Tampilan persis sesuai format resmi Word yang akan di-export</p>
+                    </div>
+                    <button type="button" id="btnCloseModal" class="btn-close">&times;</button>
+                </div>
+                <div class="modal-body" id="modalTableBody">
+                    <!-- Word Mockup Table rendered here -->
+                </div>
+                <div class="modal-footer">
+                    <button type="button" id="btnModalClose" class="btn btn-secondary">Tutup &amp; Edit Data</button>
+                    <button type="button" id="btnModalDownload" class="btn btn-success">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Download File .docx
+                    </button>
+                </div>
+            </div>
+        </dialog>
+
+        <footer class="app-footer">
+            <p>Reward Cashback Generator &copy; 2026 ICONNET Sales Force Automation. Client-side processing only.</p>
+        </footer>
+    </div>
+
+    <!-- Scripts -->
+    <script src="docxGenerator.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
