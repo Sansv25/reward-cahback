@@ -53,6 +53,7 @@ TOTAL\t\t\t\t\t\t Rp1,812,200`
         showTotalRow: true,
         rawText: '',
         parsedGroups: [],
+        dynamicHeaders: [],
         warnings: [],
         totalNominal: 0,
         imageBuffer: null,
@@ -188,6 +189,11 @@ TOTAL\t\t\t\t\t\t Rp1,812,200`
      * @param {string} str 
      * @returns {boolean}
      */
+    /**
+     * Checks if string contains mostly numeric/money content
+     * @param {string} str 
+     * @returns {boolean}
+     */
     function isNumericString(str) {
         if (!str) return false;
         const cleaned = str.replace(/[^\d]/g, '');
@@ -196,179 +202,134 @@ TOTAL\t\t\t\t\t\t Rp1,812,200`
 
     /**
      * Parses raw tab-separated input text into structured group objects.
-     * Supports both Detailed Multi-User Breakdown (Format A) and Summary Agent Tables (Format B).
+     * Preserves exact original columns from Excel paste without injecting extra unwanted columns.
      * @param {string} rawText 
-     * @returns {{ groups: Array, warnings: Array, totalNominal: number, isSummaryFormat: boolean, detectedTitle: string|null }}
+     * @returns {{ groups: Array, warnings: Array, totalNominal: number, dynamicHeaders: Array, detectedTitle: string|null }}
      */
     function parseRawInput(rawText) {
         const groups = [];
         const warnings = [];
         let detectedTitle = null;
+        let dynamicHeaders = [];
 
         if (!rawText || !rawText.trim()) {
-            return { groups: [], warnings: ["Teks input mentah kosong."], totalNominal: 0, isSummaryFormat: false, detectedTitle: null };
+            return { groups: [], warnings: ["Teks input mentah kosong."], totalNominal: 0, dynamicHeaders: [], detectedTitle: null };
         }
 
-        const lines = rawText.split(/\r?\n/);
+        const lines = rawText.split(/\r?\n/).filter(l => l.trim().length > 0);
+        if (lines.length === 0) {
+            return { groups: [], warnings: ["Teks input mentah kosong."], totalNominal: 0, dynamicHeaders: [], detectedTitle: null };
+        }
 
-        // Phase 1: Auto-Detect Title & Format Mode (Summary vs Detailed)
-        let hasContinuationLines = false;
-        let hasSummaryHeader = false;
-        let nonNumericCol2Count = 0;
-        let numericCol2Count = 0;
+        let headerLineIdx = -1;
 
-        lines.forEach((line) => {
-            const trimmed = line.trim();
-            if (!trimmed) return;
+        // Step 1: Detect Title Header & Column Header Line
+        for (let i = 0; i < Math.min(5, lines.length); i++) {
+            const cols = lines[i].split('\t').map(c => c.trim());
+            const colsUpper = cols.map(c => c.toUpperCase());
 
-            const cols = line.split('\t').map(c => c.trim());
-            const firstColUpper = (cols[0] || '').toUpperCase();
-
-            // Detect title header line (e.g. "Intensif Prestasi Mitra Individu...")
-            if (cols.length === 1 || (cols.length > 1 && !cols[1] && !cols[2])) {
-                if (!detectedTitle && (firstColUpper.includes('INTENSIF') || firstColUpper.includes('REWARD') || firstColUpper.includes('CASHBACK') || firstColUpper.includes('PERIODE') || firstColUpper.includes('MITRA'))) {
-                    detectedTitle = trimmed;
+            if (colsUpper.some(c => c === 'NAMA' || c === 'NAMA AGEN' || c === 'HC' || c === 'JUMLAH USER' || c.includes('NOMINAL') || c.includes('BUKTI') || c.includes('INSENTIF'))) {
+                headerLineIdx = i;
+                dynamicHeaders = cols;
+                break;
+            } else if (i === 0 && cols.length <= 3) {
+                const trimmedFirst = lines[0].trim();
+                if (trimmedFirst && !trimmedFirst.toUpperCase().startsWith('TOTAL')) {
+                    detectedTitle = trimmedFirst;
                 }
             }
+        }
 
-            // Header indicators for Summary format
-            if (firstColUpper.includes('HC') || firstColUpper.includes('INSENTIF') || firstColUpper.includes('TAMBAHAN') || firstColUpper.includes('TOTAL TF') || firstColUpper.includes('NOMINAL FEE')) {
-                hasSummaryHeader = true;
+        // Fallback headers if no explicit header line found
+        if (headerLineIdx === -1) {
+            const firstCols = lines[0].split('\t').map(c => c.trim());
+            if (firstCols.length >= 3 && (firstCols[0].toUpperCase().includes('NAMA') || firstCols[1].toUpperCase().includes('HC'))) {
+                dynamicHeaders = firstCols;
+                headerLineIdx = 0;
+            } else {
+                dynamicHeaders = ["NAMA AGEN", "JUMLAH USER", "NAMA USER", "ID USER", "VOUCHER", "E-WALLET / ID PLN", "NOMINAL", "BUKTI PEMBAYARAN"];
+                headerLineIdx = -1; // Line 0 is actual data
             }
+        }
 
-            // Detect continuation lines (empty col[0])
-            if (cols[0] === '' && cols.length > 2 && cols[2] !== '') {
-                hasContinuationLines = true;
-            }
+        // Clean up trailing empty header columns
+        while (dynamicHeaders.length > 0 && dynamicHeaders[dynamicHeaders.length - 1] === '') {
+            dynamicHeaders.pop();
+        }
 
-            // Check if col[2] is numeric vs person name
-            if (cols[0] !== '' && !firstColUpper.includes('REWARD') && !firstColUpper.includes('NAMA') && !firstColUpper.includes('INTENSIF') && firstColUpper !== 'TOTAL') {
-                if (cols.length > 2 && cols[2] !== '') {
-                    if (isNumericString(cols[2])) {
-                        numericCol2Count++;
-                    } else {
-                        nonNumericCol2Count++;
-                    }
-                }
-            }
-        });
+        // Ensure last column is BUKTI PEMBAYARAN / BUKTI TF photo slot
+        const lastHUpper = (dynamicHeaders[dynamicHeaders.length - 1] || '').toUpperCase();
+        if (!lastHUpper.includes('BUKTI')) {
+            dynamicHeaders.push('BUKTI PEMBAYARAN');
+        }
 
-        const isSummaryFormat = hasSummaryHeader || (!hasContinuationLines && numericCol2Count > nonNumericCol2Count);
+        const proofColIdx = dynamicHeaders.length - 1;
+        const dataLines = lines.slice(headerLineIdx + 1);
         let currentGroup = null;
 
-        lines.forEach((line) => {
-            const trimmedLine = line.trim();
-            if (!trimmedLine) return;
-
+        dataLines.forEach((line) => {
             const cols = line.split('\t').map(c => c.trim());
             const firstColUpper = (cols[0] || '').toUpperCase();
 
-            // Skip Title & Header lines
-            if (firstColUpper.includes('REWARD CASHBACK') || firstColUpper.includes('NAMA AGEN') || firstColUpper.includes('INTENSIF PRESTASI')) {
-                return;
-            }
-            if (cols.length > 1 && (cols[0].toUpperCase() === 'NAMA' || cols[1].toUpperCase() === 'HC' || cols[2].toUpperCase().includes('NAMA USER') || cols[2].toUpperCase().includes('NOMINAL FEE'))) {
-                return;
-            }
+            // Skip total line if present in raw paste
             if (firstColUpper === 'TOTAL' || (cols.length === 1 && firstColUpper.startsWith('TOTAL'))) {
                 return;
             }
 
-            const namaAgen = cols[0] || '';
-            const jumlahUserStr = cols[1] || '';
+            const firstColText = cols[0] || '';
 
-            if (isSummaryFormat) {
-                // Format B: Summary Agent Table (1 row per agent, numeric fee/incentive columns)
-                if (namaAgen !== '') {
-                    const jumlahUser = parseInt(jumlahUserStr, 10) || 1;
-
-                    // Extract total nominal transfer from rightmost valid number (e.g. TOTAL TF / TOTAL)
-                    let nominalVal = 0;
-                    for (let i = cols.length - 1; i >= 2; i--) {
-                        const parsed = parseNominal(cols[i]);
-                        if (parsed > 0 && cols[i].toUpperCase() !== 'IDR') {
-                            nominalVal = parsed;
-                            break;
-                        }
-                    }
-
-                    // Optional details for promo/wallet columns
-                    const promoStr = cols[4] ? `Tambahan: ${cols[4]}` : (cols[3] ? `Insentif: ${cols[3]}` : '-');
-
-                    groups.push({
-                        namaAgen: namaAgen,
-                        jumlahUser: jumlahUser,
-                        promo: promoStr,
-                        noEwallet: '-',
-                        nominalVal: nominalVal,
-                        nominalFormatted: formatNominal(nominalVal),
-                        users: [{ namaUser: '-', idPermohonan: '-' }],
-                        isSummary: true
-                    });
+            if (firstColText !== '') {
+                if (currentGroup) {
+                    groups.push(currentGroup);
                 }
+
+                // Extract nominal for total sum calculation (pick rightmost valid number)
+                let nominalVal = 0;
+                for (let i = cols.length - 1; i >= 1; i--) {
+                    const p = parseNominal(cols[i]);
+                    if (p > 0 && cols[i].toUpperCase() !== 'IDR') {
+                        nominalVal = p;
+                        break;
+                    }
+                }
+
+                const cells = [...cols];
+                while (cells.length < proofColIdx) {
+                    cells.push('');
+                }
+
+                currentGroup = {
+                    namaAgen: firstColText,
+                    nominalVal: nominalVal,
+                    cells: cells,
+                    subRows: [cells],
+                    imageBuffer: null,
+                    imageDataUrl: null,
+                    fileName: null
+                };
             } else {
-                // Format A: Detailed Multi-User Breakdown Table
-                if (namaAgen !== '') {
-                    if (currentGroup) {
-                        groups.push(currentGroup);
+                // Sub-row continuation for multi-user breakdown
+                if (currentGroup && (cols[2] || cols[1] || cols[3])) {
+                    const cells = [...cols];
+                    while (cells.length < proofColIdx) {
+                        cells.push('');
                     }
-
-                    const jumlahUser = parseInt(jumlahUserStr, 10) || 1;
-                    const namaUser = cols[2] || '';
-                    const idPermohonan = cols[3] || '';
-                    const promo = cols[4] || '';
-                    const noEwallet = cols[5] || '';
-                    const nominalVal = parseNominal(cols[6] || '0');
-
-                    currentGroup = {
-                        namaAgen: namaAgen,
-                        jumlahUser: jumlahUser,
-                        promo: promo,
-                        noEwallet: noEwallet,
-                        nominalVal: nominalVal,
-                        nominalFormatted: formatNominal(nominalVal),
-                        users: [],
-                        isSummary: false
-                    };
-
-                    if (namaUser !== '') {
-                        currentGroup.users.push({
-                            namaUser: namaUser,
-                            idPermohonan: idPermohonan
-                        });
-                    }
-                } else {
-                    if (currentGroup && cols[2] !== '') {
-                        currentGroup.users.push({
-                            namaUser: cols[2],
-                            idPermohonan: cols[3] || ''
-                        });
-                    }
+                    currentGroup.subRows.push(cells);
                 }
             }
         });
 
-        if (!isSummaryFormat && currentGroup) {
+        if (currentGroup) {
             groups.push(currentGroup);
         }
 
-        // Validate user counts & generate warnings ONLY for Detailed format
-        groups.forEach((g) => {
-            if (!g.isSummary && g.users.length !== g.jumlahUser) {
-                warnings.push(
-                    `Agen "<strong>${g.namaAgen}</strong>": Nilai JUMLAH USER = ${g.jumlahUser}, tetapi ditemukan ${g.users.length} data user.`
-                );
-            }
-        });
-
-        // Calculate Sum Total
         const totalNominal = groups.reduce((sum, g) => sum + g.nominalVal, 0);
 
         return {
             groups: groups,
             warnings: warnings,
             totalNominal: totalNominal,
-            isSummaryFormat: isSummaryFormat,
+            dynamicHeaders: dynamicHeaders,
             detectedTitle: detectedTitle
         };
     }
@@ -378,7 +339,7 @@ TOTAL\t\t\t\t\t\t Rp1,812,200`
     // ==========================================
 
     /**
-     * Builds HTML table markup matching official Word layout
+     * Builds HTML table markup matching official Word layout using dynamic original headers
      * @param {Object} state 
      * @returns {string} HTML string
      */
@@ -386,18 +347,26 @@ TOTAL\t\t\t\t\t\t Rp1,812,200`
         const {
             periodTitle,
             tanggalProses,
-            idColumnLabel,
-            promoColumnLabel,
-            walletColumnLabel,
-            nominalColumnLabel,
             agentsPerPage,
             showTotalRow = true,
             parsedGroups,
+            dynamicHeaders = [],
             totalNominal
         } = state;
 
         const hasTanggalProses = !!(tanggalProses && tanggalProses.trim());
-        const totalColumnCount = hasTanggalProses ? 9 : 8;
+        
+        // Build headers array
+        const headers = [];
+        if (hasTanggalProses) headers.push("TANGGAL PROSES");
+        
+        if (dynamicHeaders && dynamicHeaders.length > 0) {
+            headers.push(...dynamicHeaders);
+        } else {
+            headers.push("NAMA AGEN", "JUMLAH USER", "NAMA USER", "ID USER", "VOUCHER", "E-WALLET / ID PLN", "NOMINAL", "BUKTI PEMBAYARAN");
+        }
+
+        const totalColumnCount = headers.length;
 
         const pageSize = parseInt(agentsPerPage, 10);
         const groupChunks = [];
@@ -426,24 +395,18 @@ TOTAL\t\t\t\t\t\t Rp1,812,200`
 
             // 2. Header Row
             html += `<tr class="header-row">`;
-            if (hasTanggalProses) html += `<th>TANGGAL PROSES</th>`;
-            html += `
-                <th>NAMA AGEN</th>
-                <th>JUMLAH USER</th>
-                <th>NAMA USER</th>
-                <th>${idColumnLabel || 'ID USER'}</th>
-                <th>${promoColumnLabel || 'VOUCHER'}</th>
-                <th>${walletColumnLabel || 'E-WALLET / ID PLN'}</th>
-                <th>${nominalColumnLabel || 'NOMINAL'}</th>
-                <th>BUKTI TF</th>
-            </tr>`;
+            headers.forEach(h => {
+                html += `<th>${h || ''}</th>`;
+            });
+            html += `</tr>`;
 
             // 3. Data Rows
             chunk.forEach((group) => {
-                const userCount = (group.users && group.users.length > 0) ? group.users.length : Math.max(1, group.jumlahUser || 1);
+                const subRows = group.subRows || [group.cells || []];
+                const userCount = subRows.length;
 
                 for (let uIdx = 0; uIdx < userCount; uIdx++) {
-                    const user = (group.users && group.users[uIdx]) ? group.users[uIdx] : { namaUser: '', idPermohonan: '' };
+                    const rowCells = subRows[uIdx] || [];
                     html += `<tr>`;
 
                     if (uIdx === 0) {
@@ -451,28 +414,34 @@ TOTAL\t\t\t\t\t\t Rp1,812,200`
                             html += `<td rowspan="${userCount}" class="text-center">${tanggalProses}</td>`;
                         }
 
-                        // Merged Group Columns
-                        html += `<td rowspan="${userCount}" class="text-left font-bold">${group.namaAgen}</td>`;
-                        html += `<td rowspan="${userCount}" class="text-center">${group.jumlahUser}</td>`;
+                        const dataColCount = (dynamicHeaders && dynamicHeaders.length > 0) ? dynamicHeaders.length - 1 : 7;
 
-                        // Non-merged User Columns
-                        html += `<td class="text-left">${user.namaUser}</td>`;
-                        html += `<td class="text-center">${user.idPermohonan}</td>`;
+                        for (let c = 0; c < dataColCount; c++) {
+                            const val = rowCells[c] !== undefined ? rowCells[c] : '';
+                            const isUserDetailCol = (userCount > 1 && (c === 2 || c === 3));
 
-                        // Merged Group Columns
-                        html += `<td rowspan="${userCount}" class="text-center">${group.promo}</td>`;
-                        html += `<td rowspan="${userCount}" class="text-center">${group.noEwallet}</td>`;
-                        html += `<td rowspan="${userCount}" class="text-center font-bold">${group.nominalFormatted}</td>`;
+                            if (isUserDetailCol) {
+                                html += `<td class="${c === 2 ? 'text-left' : 'text-center'}">${val}</td>`;
+                            } else {
+                                html += `<td rowspan="${userCount}" class="${c === 0 ? 'text-left font-bold' : 'text-center'}">${val}</td>`;
+                            }
+                        }
 
-                        // Merged Proof Image Column (Per Agent Group)
+                        // Merged Proof Image Column (Last Column)
                         const imgContent = group.imageDataUrl
                             ? `<img src="${group.imageDataUrl}" class="proof-img-preview" alt="Bukti Transfer ${group.namaAgen}">`
                             : ``;
                         html += `<td rowspan="${userCount}" class="text-center">${imgContent}</td>`;
                     } else {
-                        // Continuation rows -> only individual user columns
-                        html += `<td class="text-left">${user.namaUser}</td>`;
-                        html += `<td class="text-center">${user.idPermohonan}</td>`;
+                        // Continuation rows in multi-user breakdown
+                        const dataColCount = (dynamicHeaders && dynamicHeaders.length > 0) ? dynamicHeaders.length - 1 : 7;
+                        for (let c = 0; c < dataColCount; c++) {
+                            const isUserDetailCol = (c === 2 || c === 3);
+                            if (isUserDetailCol) {
+                                const val = rowCells[c] !== undefined ? rowCells[c] : '';
+                                html += `<td class="${c === 2 ? 'text-left' : 'text-center'}">${val}</td>`;
+                            }
+                        }
                     }
 
                     html += `</tr>`;
@@ -788,6 +757,7 @@ TOTAL\t\t\t\t\t\t Rp1,812,200`
         }
 
         appState.parsedGroups = result.groups;
+        appState.dynamicHeaders = result.dynamicHeaders;
         appState.warnings = result.warnings;
         appState.totalNominal = result.totalNominal;
 
@@ -861,6 +831,7 @@ TOTAL\t\t\t\t\t\t Rp1,812,200`
                 agentsPerPage: appState.agentsPerPage,
                 showTotalRow: appState.showTotalRow,
                 parsedGroups: appState.parsedGroups,
+                dynamicHeaders: appState.dynamicHeaders,
                 totalNominal: appState.totalNominal
             });
 

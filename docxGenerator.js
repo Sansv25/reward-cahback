@@ -40,10 +40,6 @@
 
         const docx = window.docx;
 
-        // Check if Tanggal Proses column is enabled
-        const hasTanggalProses = !!(tanggalProses && tanggalProses.trim());
-        const totalColumnCount = hasTanggalProses ? 9 : 8;
-
         // Common border definition (Thin black borders)
         const borderStyle = {
             top: { style: docx.BorderStyle.SINGLE, size: 4, color: "000000" },
@@ -79,19 +75,28 @@
             });
         };
 
-        // Define Headers Array
+        const dynamicHeaders = options.dynamicHeaders || [];
+        const hasTanggalProses = !!(tanggalProses && tanggalProses.trim());
+
+        // Define Headers Array (Preserving original headers from paste)
         const headers = [];
         if (hasTanggalProses) headers.push("TANGGAL PROSES");
-        headers.push(
-            "NAMA AGEN",
-            "JUMLAH USER",
-            "NAMA USER",
-            idColumnLabel || "ID USER",
-            promoColumnLabel || "VOUCHER",
-            walletColumnLabel || "E-WALLET / ID PLN",
-            nominalColumnLabel || "NOMINAL",
-            "BUKTI TF"
-        );
+        if (dynamicHeaders && dynamicHeaders.length > 0) {
+            headers.push(...dynamicHeaders);
+        } else {
+            headers.push(
+                "NAMA AGEN",
+                "JUMLAH USER",
+                "NAMA USER",
+                idColumnLabel || "ID USER",
+                promoColumnLabel || "VOUCHER",
+                walletColumnLabel || "E-WALLET / ID PLN",
+                nominalColumnLabel || "NOMINAL",
+                "BUKTI PEMBAYARAN"
+            );
+        }
+
+        const totalColumnCount = headers.length;
 
         // Grouping agents into pages (e.g. 2 agents per page)
         const pageSize = parseInt(agentsPerPage, 10);
@@ -142,7 +147,7 @@
                             verticalAlign: docx.VerticalAlign.CENTER,
                             margins: cellMargins,
                             children: [
-                                createTextParagraph(hText, {
+                                createTextParagraph(hText || '', {
                                     bold: true,
                                     color: "000000",
                                     size: 19, // 9.5pt
@@ -156,14 +161,14 @@
 
             // 3. DATA ROWS FOR THIS PAGE CHUNK
             chunk.forEach((group) => {
-                const userCount = (group.users && group.users.length > 0) ? group.users.length : Math.max(1, group.jumlahUser || 1);
+                const subRows = group.subRows || [group.cells || []];
+                const userCount = subRows.length;
 
                 for (let uIdx = 0; uIdx < userCount; uIdx++) {
-                    const user = (group.users && group.users[uIdx]) ? group.users[uIdx] : { namaUser: "", idPermohonan: "" };
+                    const subRow = subRows[uIdx] || [];
                     const rowCells = [];
 
                     if (uIdx === 0) {
-                        // Include Tanggal Proses if enabled
                         if (hasTanggalProses) {
                             rowCells.push(
                                 new docx.TableCell({
@@ -175,51 +180,33 @@
                             );
                         }
 
-                        // Agent level merged columns
-                        rowCells.push(
-                            new docx.TableCell({
-                                rowSpan: userCount,
-                                verticalAlign: docx.VerticalAlign.CENTER,
-                                margins: cellMargins,
-                                children: [createTextParagraph(group.namaAgen, { bold: true, align: docx.AlignmentType.LEFT })]
-                            }),
-                            new docx.TableCell({
-                                rowSpan: userCount,
-                                verticalAlign: docx.VerticalAlign.CENTER,
-                                margins: cellMargins,
-                                children: [createTextParagraph(group.jumlahUser, { align: docx.AlignmentType.CENTER })]
-                            }),
-                            new docx.TableCell({
-                                verticalAlign: docx.VerticalAlign.CENTER,
-                                margins: cellMargins,
-                                children: [createTextParagraph(user.namaUser, { align: docx.AlignmentType.LEFT })]
-                            }),
-                            new docx.TableCell({
-                                verticalAlign: docx.VerticalAlign.CENTER,
-                                margins: cellMargins,
-                                children: [createTextParagraph(user.idPermohonan, { align: docx.AlignmentType.CENTER })]
-                            }),
-                            new docx.TableCell({
-                                rowSpan: userCount,
-                                verticalAlign: docx.VerticalAlign.CENTER,
-                                margins: cellMargins,
-                                children: [createTextParagraph(group.promo, { align: docx.AlignmentType.CENTER })]
-                            }),
-                            new docx.TableCell({
-                                rowSpan: userCount,
-                                verticalAlign: docx.VerticalAlign.CENTER,
-                                margins: cellMargins,
-                                children: [createTextParagraph(group.noEwallet, { align: docx.AlignmentType.CENTER })]
-                            }),
-                            new docx.TableCell({
-                                rowSpan: userCount,
-                                verticalAlign: docx.VerticalAlign.CENTER,
-                                margins: cellMargins,
-                                children: [createTextParagraph(group.nominalFormatted, { align: docx.AlignmentType.CENTER })]
-                            })
-                        );
+                        const dataColCount = (dynamicHeaders && dynamicHeaders.length > 0) ? dynamicHeaders.length - 1 : 7;
 
-                        // BUKTI TF Column (1 photo per agent group with left/right padding)
+                        for (let c = 0; c < dataColCount; c++) {
+                            const val = subRow[c] !== undefined ? subRow[c] : '';
+                            const isUserDetailCol = (userCount > 1 && (c === 2 || c === 3));
+
+                            if (isUserDetailCol) {
+                                rowCells.push(
+                                    new docx.TableCell({
+                                        verticalAlign: docx.VerticalAlign.CENTER,
+                                        margins: cellMargins,
+                                        children: [createTextParagraph(val, { align: c === 2 ? docx.AlignmentType.LEFT : docx.AlignmentType.CENTER })]
+                                    })
+                                );
+                            } else {
+                                rowCells.push(
+                                    new docx.TableCell({
+                                        rowSpan: userCount,
+                                        verticalAlign: docx.VerticalAlign.CENTER,
+                                        margins: cellMargins,
+                                        children: [createTextParagraph(val, { bold: c === 0, align: c === 0 ? docx.AlignmentType.LEFT : docx.AlignmentType.CENTER })]
+                                    })
+                                );
+                            }
+                        }
+
+                        // Proof Image Column (Last Column)
                         const proofChildren = [];
                         if (group.imageBuffer && group.imageDimensions) {
                             proofChildren.push(
@@ -249,19 +236,21 @@
                             })
                         );
                     } else {
-                        // Continuation row of group -> include only NAMA USER and ID PERMOHONAN
-                        rowCells.push(
-                            new docx.TableCell({
-                                verticalAlign: docx.VerticalAlign.CENTER,
-                                margins: cellMargins,
-                                children: [createTextParagraph(user.namaUser, { align: docx.AlignmentType.LEFT })]
-                            }),
-                            new docx.TableCell({
-                                verticalAlign: docx.VerticalAlign.CENTER,
-                                margins: cellMargins,
-                                children: [createTextParagraph(user.idPermohonan, { align: docx.AlignmentType.CENTER })]
-                            })
-                        );
+                        // Continuation row in multi-user breakdown
+                        const dataColCount = (dynamicHeaders && dynamicHeaders.length > 0) ? dynamicHeaders.length - 1 : 7;
+                        for (let c = 0; c < dataColCount; c++) {
+                            const isUserDetailCol = (c === 2 || c === 3);
+                            if (isUserDetailCol) {
+                                const val = subRow[c] !== undefined ? subRow[c] : '';
+                                rowCells.push(
+                                    new docx.TableCell({
+                                        verticalAlign: docx.VerticalAlign.CENTER,
+                                        margins: cellMargins,
+                                        children: [createTextParagraph(val, { align: c === 2 ? docx.AlignmentType.LEFT : docx.AlignmentType.CENTER })]
+                                    })
+                                );
+                            }
+                        }
                     }
 
                     tableRows.push(new docx.TableRow({ cantSplit: true, children: rowCells }));
