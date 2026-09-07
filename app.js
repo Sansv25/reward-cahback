@@ -179,95 +179,177 @@ TOTAL\t\t\t\t\t\t Rp1,812,200`
     // ==========================================
 
     /**
-     * Parses raw tab-separated input text into structured group objects
+     * Checks if string contains mostly numeric/money content
+     * @param {string} str 
+     * @returns {boolean}
+     */
+    function isNumericString(str) {
+        if (!str) return false;
+        const cleaned = str.replace(/[^\d]/g, '');
+        return cleaned.length > 0 && /^\d+$/.test(cleaned) && !/[a-zA-Z]{3,}/.test(str);
+    }
+
+    /**
+     * Parses raw tab-separated input text into structured group objects.
+     * Supports both Detailed Multi-User Breakdown (Format A) and Summary Agent Tables (Format B).
      * @param {string} rawText 
-     * @returns {{ groups: Array, warnings: Array, totalNominal: number }}
+     * @returns {{ groups: Array, warnings: Array, totalNominal: number, isSummaryFormat: boolean, detectedTitle: string|null }}
      */
     function parseRawInput(rawText) {
         const groups = [];
         const warnings = [];
-        let currentGroup = null;
+        let detectedTitle = null;
 
         if (!rawText || !rawText.trim()) {
-            return { groups: [], warnings: ["Teks input mentah kosong."], totalNominal: 0 };
+            return { groups: [], warnings: ["Teks input mentah kosong."], totalNominal: 0, isSummaryFormat: false, detectedTitle: null };
         }
 
         const lines = rawText.split(/\r?\n/);
+
+        // Phase 1: Auto-Detect Title & Format Mode (Summary vs Detailed)
+        let hasContinuationLines = false;
+        let hasSummaryHeader = false;
+        let nonNumericCol2Count = 0;
+        let numericCol2Count = 0;
+
+        lines.forEach((line) => {
+            const trimmed = line.trim();
+            if (!trimmed) return;
+
+            const cols = line.split('\t').map(c => c.trim());
+            const firstColUpper = (cols[0] || '').toUpperCase();
+
+            // Detect title header line (e.g. "Intensif Prestasi Mitra Individu...")
+            if (cols.length === 1 || (cols.length > 1 && !cols[1] && !cols[2])) {
+                if (!detectedTitle && (firstColUpper.includes('INTENSIF') || firstColUpper.includes('REWARD') || firstColUpper.includes('CASHBACK') || firstColUpper.includes('PERIODE') || firstColUpper.includes('MITRA'))) {
+                    detectedTitle = trimmed;
+                }
+            }
+
+            // Header indicators for Summary format
+            if (firstColUpper.includes('HC') || firstColUpper.includes('INSENTIF') || firstColUpper.includes('TAMBAHAN') || firstColUpper.includes('TOTAL TF') || firstColUpper.includes('NOMINAL FEE')) {
+                hasSummaryHeader = true;
+            }
+
+            // Detect continuation lines (empty col[0])
+            if (cols[0] === '' && cols.length > 2 && cols[2] !== '') {
+                hasContinuationLines = true;
+            }
+
+            // Check if col[2] is numeric vs person name
+            if (cols[0] !== '' && !firstColUpper.includes('REWARD') && !firstColUpper.includes('NAMA') && !firstColUpper.includes('INTENSIF') && firstColUpper !== 'TOTAL') {
+                if (cols.length > 2 && cols[2] !== '') {
+                    if (isNumericString(cols[2])) {
+                        numericCol2Count++;
+                    } else {
+                        nonNumericCol2Count++;
+                    }
+                }
+            }
+        });
+
+        const isSummaryFormat = hasSummaryHeader || (!hasContinuationLines && numericCol2Count > nonNumericCol2Count);
+        let currentGroup = null;
 
         lines.forEach((line) => {
             const trimmedLine = line.trim();
             if (!trimmedLine) return;
 
-            // Split by Tab character
             const cols = line.split('\t').map(c => c.trim());
-
-            // 1. Detect and ignore old Title/Header rows from Excel
             const firstColUpper = (cols[0] || '').toUpperCase();
-            if (firstColUpper.includes('REWARD CASHBACK') || firstColUpper.includes('NAMA AGEN')) {
-                return; // Skip excel header/title line
-            }
-            if (cols.length > 2 && cols[2] && cols[2].toUpperCase().includes('NAMA USER')) {
-                return; // Skip column headers
-            }
 
-            // 2. Detect TOTAL Row -> Mark end of data
+            // Skip Title & Header lines
+            if (firstColUpper.includes('REWARD CASHBACK') || firstColUpper.includes('NAMA AGEN') || firstColUpper.includes('INTENSIF PRESTASI')) {
+                return;
+            }
+            if (cols.length > 1 && (cols[0].toUpperCase() === 'NAMA' || cols[1].toUpperCase() === 'HC' || cols[2].toUpperCase().includes('NAMA USER') || cols[2].toUpperCase().includes('NOMINAL FEE'))) {
+                return;
+            }
             if (firstColUpper === 'TOTAL' || (cols.length === 1 && firstColUpper.startsWith('TOTAL'))) {
                 return;
             }
 
             const namaAgen = cols[0] || '';
             const jumlahUserStr = cols[1] || '';
-            const namaUser = cols[2] || '';
-            const idPermohonan = cols[3] || '';
 
-            // Check if this line starts a NEW AGENT GROUP
-            if (namaAgen !== '') {
-                // If there's an active previous group, finalize it
-                if (currentGroup) {
-                    groups.push(currentGroup);
-                }
+            if (isSummaryFormat) {
+                // Format B: Summary Agent Table (1 row per agent, numeric fee/incentive columns)
+                if (namaAgen !== '') {
+                    const jumlahUser = parseInt(jumlahUserStr, 10) || 1;
 
-                const jumlahUser = parseInt(jumlahUserStr, 10) || 1;
-                const promo = cols[4] || '';
-                const noEwallet = cols[5] || '';
-                const nominalVal = parseNominal(cols[6] || '0');
+                    // Extract total nominal transfer from rightmost valid number (e.g. TOTAL TF / TOTAL)
+                    let nominalVal = 0;
+                    for (let i = cols.length - 1; i >= 2; i--) {
+                        const parsed = parseNominal(cols[i]);
+                        if (parsed > 0 && cols[i].toUpperCase() !== 'IDR') {
+                            nominalVal = parsed;
+                            break;
+                        }
+                    }
 
-                currentGroup = {
-                    namaAgen: namaAgen,
-                    jumlahUser: jumlahUser,
-                    promo: promo,
-                    noEwallet: noEwallet,
-                    nominalVal: nominalVal,
-                    nominalFormatted: formatNominal(nominalVal),
-                    users: []
-                };
+                    // Optional details for promo/wallet columns
+                    const promoStr = cols[4] ? `Tambahan: ${cols[4]}` : (cols[3] ? `Insentif: ${cols[3]}` : '-');
 
-                if (namaUser !== '') {
-                    currentGroup.users.push({
-                        namaUser: namaUser,
-                        idPermohonan: idPermohonan
+                    groups.push({
+                        namaAgen: namaAgen,
+                        jumlahUser: jumlahUser,
+                        promo: promoStr,
+                        noEwallet: '-',
+                        nominalVal: nominalVal,
+                        nominalFormatted: formatNominal(nominalVal),
+                        users: [{ namaUser: '-', idPermohonan: '-' }],
+                        isSummary: true
                     });
                 }
             } else {
-                // Continuation line for current active agent group
-                if (currentGroup && namaUser !== '') {
-                    // Only push user details; ignore any stray text in promo/wallet/nominal columns as per PRD specs
-                    currentGroup.users.push({
-                        namaUser: namaUser,
-                        idPermohonan: idPermohonan
-                    });
+                // Format A: Detailed Multi-User Breakdown Table
+                if (namaAgen !== '') {
+                    if (currentGroup) {
+                        groups.push(currentGroup);
+                    }
+
+                    const jumlahUser = parseInt(jumlahUserStr, 10) || 1;
+                    const namaUser = cols[2] || '';
+                    const idPermohonan = cols[3] || '';
+                    const promo = cols[4] || '';
+                    const noEwallet = cols[5] || '';
+                    const nominalVal = parseNominal(cols[6] || '0');
+
+                    currentGroup = {
+                        namaAgen: namaAgen,
+                        jumlahUser: jumlahUser,
+                        promo: promo,
+                        noEwallet: noEwallet,
+                        nominalVal: nominalVal,
+                        nominalFormatted: formatNominal(nominalVal),
+                        users: [],
+                        isSummary: false
+                    };
+
+                    if (namaUser !== '') {
+                        currentGroup.users.push({
+                            namaUser: namaUser,
+                            idPermohonan: idPermohonan
+                        });
+                    }
+                } else {
+                    if (currentGroup && cols[2] !== '') {
+                        currentGroup.users.push({
+                            namaUser: cols[2],
+                            idPermohonan: cols[3] || ''
+                        });
+                    }
                 }
             }
         });
 
-        // Push final group
-        if (currentGroup) {
+        if (!isSummaryFormat && currentGroup) {
             groups.push(currentGroup);
         }
 
-        // Validate user counts & generate warnings if mismatch
+        // Validate user counts & generate warnings ONLY for Detailed format
         groups.forEach((g) => {
-            if (g.users.length !== g.jumlahUser) {
+            if (!g.isSummary && g.users.length !== g.jumlahUser) {
                 warnings.push(
                     `Agen "<strong>${g.namaAgen}</strong>": Nilai JUMLAH USER = ${g.jumlahUser}, tetapi ditemukan ${g.users.length} data user.`
                 );
@@ -280,7 +362,9 @@ TOTAL\t\t\t\t\t\t Rp1,812,200`
         return {
             groups: groups,
             warnings: warnings,
-            totalNominal: totalNominal
+            totalNominal: totalNominal,
+            isSummaryFormat: isSummaryFormat,
+            detectedTitle: detectedTitle
         };
     }
 
@@ -690,6 +774,11 @@ TOTAL\t\t\t\t\t\t Rp1,812,200`
         });
 
         const result = parseRawInput(appState.rawText);
+
+        if (result.detectedTitle && elements.periodTitle && (!elements.periodTitle.value || elements.periodTitle.value.trim() === '' || elements.periodTitle.value.includes('REWARD CASHBACK VOUCHER CW WEEKEND PERIODE TRANSFER'))) {
+            elements.periodTitle.value = result.detectedTitle;
+            appState.periodTitle = result.detectedTitle;
+        }
 
         appState.parsedGroups = result.groups;
         appState.warnings = result.warnings;
