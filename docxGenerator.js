@@ -33,6 +33,7 @@
             walletColumnLabel = "E-WALLET / ID PLN",
             nominalColumnLabel = "NOMINAL",
             agentsPerPage = 2,
+            showTotalRow = true,
             parsedGroups = [],
             totalNominal = 0
         } = options;
@@ -267,8 +268,8 @@
                 }
             });
 
-            // 4. TOTAL ROW (ONLY ON THE VERY LAST PAGE)
-            if (pageIdx === groupChunks.length - 1) {
+            // 4. TOTAL ROW (ONLY ON THE VERY LAST PAGE IF ENABLED)
+            if (showTotalRow && pageIdx === groupChunks.length - 1) {
                 const formattedTotal = "Rp " + Number(totalNominal || 0).toLocaleString('id-ID');
                 const labelSpan = totalColumnCount - 2; // e.g. 9 - 2 = 7, or 8 - 2 = 6
 

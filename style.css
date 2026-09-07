@@ -266,6 +266,39 @@ body {
     color: var(--text-muted);
 }
 
+/* Checkbox Toggle Group */
+.checkbox-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 16px;
+    background-color: var(--input-bg);
+    border: 1px solid var(--input-border);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    user-select: none;
+    transition: var(--transition);
+    width: fit-content;
+}
+
+.checkbox-group:hover {
+    border-color: var(--primary);
+    background-color: rgba(68, 114, 196, 0.08);
+}
+
+.checkbox-group input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    accent-color: var(--primary);
+    cursor: pointer;
+}
+
+.checkbox-group span {
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
 /* File Upload Custom styling */
 .file-upload-wrapper {
     position: relative;

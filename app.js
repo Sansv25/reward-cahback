@@ -50,6 +50,7 @@ TOTAL\t\t\t\t\t\t Rp1,812,200`
         walletColumnLabel: 'E-WALLET / ID PLN',
         nominalColumnLabel: 'NOMINAL',
         agentsPerPage: 0,
+        showTotalRow: true,
         rawText: '',
         parsedGroups: [],
         warnings: [],
@@ -68,6 +69,7 @@ TOTAL\t\t\t\t\t\t Rp1,812,200`
         promoColumnLabel: document.getElementById('promoColumnLabel'),
         walletColumnLabel: document.getElementById('walletColumnLabel'),
         nominalColumnLabel: document.getElementById('nominalColumnLabel'),
+        showTotalRow: document.getElementById('showTotalRow'),
         rawInput: document.getElementById('rawInput'),
         proofImage: document.getElementById('proofImage'),
         fileUploadContent: document.getElementById('fileUploadContent'),
@@ -144,6 +146,7 @@ TOTAL\t\t\t\t\t\t Rp1,812,200`
             if (elements.walletColumnLabel) localStorage.setItem('rcg_walletColumnLabel', elements.walletColumnLabel.value);
             if (elements.nominalColumnLabel) localStorage.setItem('rcg_nominalColumnLabel', elements.nominalColumnLabel.value);
             if (elements.agentsPerPage) localStorage.setItem('rcg_agentsPerPage', elements.agentsPerPage.value);
+            if (elements.showTotalRow) localStorage.setItem('rcg_showTotalRow', elements.showTotalRow.checked ? 'true' : 'false');
             if (elements.rawInput) localStorage.setItem('rcg_rawInput', elements.rawInput.value);
         } catch (e) {
             console.warn("LocalStorage save error:", e);
@@ -159,6 +162,7 @@ TOTAL\t\t\t\t\t\t Rp1,812,200`
             const walletLbl = localStorage.getItem('rcg_walletColumnLabel');
             const nominalLbl = localStorage.getItem('rcg_nominalColumnLabel');
             const perPage = localStorage.getItem('rcg_agentsPerPage');
+            const showTotal = localStorage.getItem('rcg_showTotalRow');
             const raw = localStorage.getItem('rcg_rawInput');
 
             if (title !== null && elements.periodTitle) elements.periodTitle.value = title;
@@ -168,6 +172,7 @@ TOTAL\t\t\t\t\t\t Rp1,812,200`
             if (walletLbl !== null && elements.walletColumnLabel) elements.walletColumnLabel.value = walletLbl;
             if (nominalLbl !== null && elements.nominalColumnLabel) elements.nominalColumnLabel.value = nominalLbl;
             if (perPage !== null && elements.agentsPerPage) elements.agentsPerPage.value = perPage;
+            if (showTotal !== null && elements.showTotalRow) elements.showTotalRow.checked = (showTotal === 'true');
             if (raw !== null && elements.rawInput) elements.rawInput.value = raw;
         } catch (e) {
             console.warn("LocalStorage load error:", e);
@@ -386,6 +391,7 @@ TOTAL\t\t\t\t\t\t Rp1,812,200`
             walletColumnLabel,
             nominalColumnLabel,
             agentsPerPage,
+            showTotalRow = true,
             parsedGroups,
             totalNominal
         } = state;
@@ -473,8 +479,8 @@ TOTAL\t\t\t\t\t\t Rp1,812,200`
                 }
             });
 
-            // 4. TOTAL Row (Only on the last page table)
-            if (pageIdx === groupChunks.length - 1) {
+            // 4. TOTAL Row (Only on the last page table if showTotalRow is enabled)
+            if (showTotalRow && pageIdx === groupChunks.length - 1) {
                 const formattedTotal = formatNominal(totalNominal);
                 const labelSpan = totalColumnCount - 2;
 
@@ -744,6 +750,7 @@ TOTAL\t\t\t\t\t\t Rp1,812,200`
         if (elements.walletColumnLabel) appState.walletColumnLabel = (elements.walletColumnLabel.value || '').trim() || 'E-WALLET / ID PLN';
         if (elements.nominalColumnLabel) appState.nominalColumnLabel = (elements.nominalColumnLabel.value || '').trim() || 'NOMINAL';
         if (elements.agentsPerPage) appState.agentsPerPage = parseInt(elements.agentsPerPage.value, 10);
+        if (elements.showTotalRow) appState.showTotalRow = elements.showTotalRow.checked;
 
         // Real-time update live preview table if data exists
         if (appState.parsedGroups && appState.parsedGroups.length > 0) {
@@ -852,6 +859,7 @@ TOTAL\t\t\t\t\t\t Rp1,812,200`
                 walletColumnLabel: appState.walletColumnLabel,
                 nominalColumnLabel: appState.nominalColumnLabel,
                 agentsPerPage: appState.agentsPerPage,
+                showTotalRow: appState.showTotalRow,
                 parsedGroups: appState.parsedGroups,
                 totalNominal: appState.totalNominal
             });
@@ -935,6 +943,7 @@ TOTAL\t\t\t\t\t\t Rp1,812,200`
             elements.walletColumnLabel.value = 'E-WALLET / ID PLN';
             elements.nominalColumnLabel.value = 'NOMINAL';
             elements.agentsPerPage.value = '0';
+            elements.showTotalRow.checked = true;
             elements.rawInput.value = '';
             
             localStorage.removeItem('rcg_periodTitle');
@@ -944,6 +953,7 @@ TOTAL\t\t\t\t\t\t Rp1,812,200`
             localStorage.removeItem('rcg_walletColumnLabel');
             localStorage.removeItem('rcg_nominalColumnLabel');
             localStorage.removeItem('rcg_agentsPerPage');
+            localStorage.removeItem('rcg_showTotalRow');
             localStorage.removeItem('rcg_rawInput');
 
             elements.previewSection.classList.add('hidden');
@@ -984,6 +994,7 @@ TOTAL\t\t\t\t\t\t Rp1,812,200`
             elements.walletColumnLabel,
             elements.nominalColumnLabel,
             elements.agentsPerPage,
+            elements.showTotalRow,
             elements.rawInput
         ];
 
