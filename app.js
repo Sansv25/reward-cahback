@@ -300,9 +300,11 @@ TOTAL\t\t\t\t\t\t Rp1,812,200`
 
                 currentGroup = {
                     namaAgen: firstColText,
+                    jumlahUser: parseInt(cols[1], 10) || 1,
                     nominalVal: nominalVal,
                     cells: cells,
                     subRows: [cells],
+                    users: [],
                     imageBuffer: null,
                     imageDataUrl: null,
                     fileName: null
@@ -584,11 +586,15 @@ TOTAL\t\t\t\t\t\t Rp1,812,200`
 
             const fileName = group.fileName || 'Pilih / Drag & Drop foto di sini...';
 
+            const badgeText = (group.subRows && group.subRows.length > 1) 
+                ? `${group.subRows.length} User` 
+                : (group.cells && group.cells[1] ? `${group.cells[1]} HC/Item` : (group.jumlahUser ? `${group.jumlahUser} User` : '1 Item'));
+
             html += `
                 <div class="agent-photo-item" data-agent-index="${index}">
                     <div class="agent-info-label">
                         <span>${group.namaAgen}</span>
-                        <span class="user-count-badge">${group.jumlahUser} User</span>
+                        <span class="user-count-badge">${badgeText}</span>
                     </div>
                     <div class="agent-file-wrapper">
                         ${thumbHtml}
@@ -695,10 +701,13 @@ TOTAL\t\t\t\t\t\t Rp1,812,200`
             elements.tableContainer.innerHTML = tableHTML;
             elements.previewSection.classList.remove('hidden');
 
-            const totalUsers = appState.parsedGroups.reduce((a, b) => a + b.users.length, 0);
+            const totalUsers = appState.parsedGroups.reduce((a, b) => {
+                const subCount = (b.subRows && b.subRows.length > 0) ? b.subRows.length : ((b.users && b.users.length > 0) ? b.users.length : 1);
+                return a + subCount;
+            }, 0);
             const photoCount = appState.parsedGroups.filter(g => !!g.imageDataUrl).length;
 
-            elements.parseSummaryBadge.textContent = `${appState.parsedGroups.length} Agen | ${totalUsers} User | ${photoCount} Foto | Total: ${formatNominal(appState.totalNominal)}`;
+            elements.parseSummaryBadge.textContent = `${appState.parsedGroups.length} Baris / Agen | ${totalUsers} Data | ${photoCount} Foto | Total: ${formatNominal(appState.totalNominal)}`;
 
             elements.btnPreview.disabled = false;
             elements.btnDownload.disabled = false;
